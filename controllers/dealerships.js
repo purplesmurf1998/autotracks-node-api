@@ -3,6 +3,17 @@ const asyncHandler = require("../async-handler");
 const Dealership = require("../models/Dealerships");
 const PropertyConfig = require("../models/PropertyConfigs");
 const User = require("../models/Users");
+const NodeGeocoder = require("node-geocoder");
+const dotenv = require("dotenv");
+if (process.env.NODE_ENV === "development") {
+  console.log("Running in development mode.");
+  dotenv.config({ path: "./.env" });
+}
+const geocoderOptions = {
+  provider: "google",
+  apiKey: process.env.GOOGLE_API_KEY,
+};
+const geocoder = NodeGeocoder(geocoderOptions);
 const {
   invalidObjectId,
   requiredString,
@@ -15,13 +26,46 @@ const NAME_MAX_LENGTH = 50;
 // @route   POST /dealerships
 // @access  Authenticated
 exports.createDealership = asyncHandler(async (req, res, next) => {
+  // validate that the user creating the dealership is admin
+  if (!req.token.isAccountAdmin)
+    return next(
+      new ErrorResponse(`Unauthorized to access this endpoint.`, 401)
+    );
+
   // validate body
   const body = convertBody(req);
   const validationError = validateBody(body);
   if (validationError) return next(validationError);
 
+  // validate the account ID
+  if (invalidObjectId(req.params.accountId))
+    return next(
+      new ErrorResponse(
+        `Account ID ${req.params.accountId} is not a valid ObjectId.`,
+        400
+      )
+    );
+
+  // validate the dealership name doesn't exist
+  if (await isNameExists(req.params.accountId, body.name))
+    return next(
+      new ErrorResponse(
+        `Dealership with name '${body.name}' already exists for this account.`,
+        400
+      )
+    );
+
+  const dealershipCreation = {
+    name: body.name,
+    geocoded_address: body.geocodedAddress,
+    formatted_address: body.formattedAddress,
+    latitude: body.latitude,
+    longitude: body.longitude,
+    account_id: req.params.accountId,
+  };
+
   // create the dealership
-  const dealership = await Dealership.create(body);
+  const dealership = await Dealership.create(dealershipCreation);
 
   if (!dealership)
     return next(
@@ -57,9 +101,10 @@ exports.createDealership = asyncHandler(async (req, res, next) => {
     }
   }
 
-  // create property config for every admin in the account
+  // create property config for every admin in the account and add dealership ID to
+  // allowed dealership ids list
   const admins = await User.find({
-    account_id: body.accountId,
+    account_id: dealership.account_id,
     is_account_admin: true,
     deletion_time: null,
   });
@@ -71,15 +116,24 @@ exports.createDealership = asyncHandler(async (req, res, next) => {
       )
     );
 
-  let propertyConfigs = admins.map((item) => {
-    return {
-      account_id: body.accountId,
-      dealership_id: dealership._id.toString(),
-      user_id: item._id.toString(),
-      property_order: [],
-      property_group_by_ids: [],
-    };
-  });
+  let propertyConfigs = await Promise.all(
+    admins.map(async (admin) => {
+      let allowedDealershipIds = admin.allowed_dealership_ids
+        ? admin.allowed_dealership_ids
+        : [];
+      allowedDealershipIds.push(dealership._id.toString());
+      await User.findByIdAndUpdate(admin._id, {
+        allowed_dealership_ids: allowedDealershipIds,
+      });
+      return {
+        account_id: admin.account_id.toString(),
+        dealership_id: dealership._id.toString(),
+        user_id: admin._id.toString(),
+        property_order: [],
+        property_group_by_ids: [],
+      };
+    })
+  );
   await PropertyConfig.insertMany(propertyConfigs);
 
   res.status(201).json(dealership);
@@ -119,10 +173,39 @@ exports.getDealership = asyncHandler(async (req, res, next) => {
   res.status(200).json(dealership);
 });
 
+// @desc    Geocode dealership address
+// @route   POST dealerships/geocode
+// @access  Private
+exports.geocodeAddress = asyncHandler(async (req, res, next) => {
+  // validate address body
+  const { street, city, province_state, country } = req.body;
+
+  if (requiredString(street))
+    return next(new ErrorResponse("Street not provided.", 400));
+  if (requiredString(city))
+    return next(new ErrorResponse("City not provided.", 400));
+  if (requiredString(province_state))
+    return next(new ErrorResponse("Province or state not provided.", 400));
+  if (requiredString(country))
+    return next(new ErrorResponse("Country not provided.", 400));
+
+  let address = `${street} ${city}, ${province_state}, ${country}`;
+  const geocodedAddress = await geocoder.geocode(address);
+
+  res.status(201).json(geocodedAddress[0]);
+});
+
+async function isNameExists(accountId, name) {
+  return await Dealership.exists({
+    account_id: accountId,
+    name,
+    deletion_time: null,
+  });
+}
+
 function convertBody(req) {
   return {
-    accountId: req.body.account_id,
-    name: req.body.name,
+    name: req.body.name ? req.body.name.trim() : null,
     geocodedAddress: req.body.geocoded_address,
     formattedAddress: req.body.formatted_address,
     latitude: req.body.latitude,
@@ -131,23 +214,7 @@ function convertBody(req) {
 }
 
 function validateBody(body) {
-  const {
-    accountId,
-    name,
-    geocodedAddress,
-    formattedAddress,
-    latitude,
-    longitude,
-  } = body;
-
-  // validate accountId
-  if (requiredString(accountId))
-    return new ErrorResponse("Account ID not provided.", 400);
-  if (invalidObjectId(accountId))
-    return new ErrorResponse(
-      `Account ID ${accountId} is not a valid ObjectId.`,
-      400
-    );
+  const { name, geocodedAddress, formattedAddress, latitude, longitude } = body;
 
   // validate name
   if (requiredString(name))

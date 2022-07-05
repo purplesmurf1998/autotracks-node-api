@@ -31,7 +31,7 @@ exports.createAdmin = asyncHandler(async (req, res, next) => {
   // validate the body
   const body = convertBody(req);
   const validationError = validateBody(body);
-  if (validationError) return next(validationError);
+  if (validationError) return next(await handleError(validationError), req);
 
   // validate password
   if (requiredString(req.body.password))
@@ -113,6 +113,10 @@ exports.signIn = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("Invalid credentials.", 401));
   }
 
+  if (!user.password) {
+    return next(new ErrorResponse("Invalid credentials.", 401));
+  }
+
   // validate the entered password to the user password
   const passwordMatch = await matchPassword(password, user.password);
   if (!passwordMatch) {
@@ -166,6 +170,7 @@ function signJWT(user) {
   return jwt.sign(
     {
       userId: user._id,
+      accountId: user.account_id,
       displayName: user.display_name,
       email: user.email,
       activeDealershipId: user.active_dealership_id,

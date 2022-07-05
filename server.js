@@ -16,6 +16,8 @@ const mongoose = require("mongoose");
 
 const authRoutes = require("./routes/authentication");
 const userRoutes = require("./routes/users");
+const dealershipRoutes = require("./routes/dealerships");
+const rolesRoutes = require("./routes/roles");
 
 if (process.env.NODE_ENV === "development") {
   console.log("Running in development mode.");
@@ -46,7 +48,9 @@ app.use(express.json());
 
 // mount controller routes
 app.use("/auth", authRoutes);
-app.use("/users", userRoutes);
+app.use("/accounts/:accountId/users", userRoutes);
+app.use("/accounts/:accountId/dealerships", dealershipRoutes);
+app.use("/accounts/:accountId/dealerships/:dealershipId/roles", rolesRoutes);
 
 // mount error handler function
 app.use((err, req, res, next) => {

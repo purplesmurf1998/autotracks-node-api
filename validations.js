@@ -5,7 +5,7 @@ exports.requiredString = (val) => {
 };
 
 exports.requiredObject = (obj) => {
-  return !val;
+  return !obj;
 };
 
 exports.maxStringLength = (val, max) => {

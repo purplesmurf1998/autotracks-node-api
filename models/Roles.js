@@ -1,6 +1,11 @@
 const mongoose = require("mongoose");
 
 const RoleSchema = new mongoose.Schema({
+  account_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Account",
+    required: [true, "Account ID not provided."],
+  },
   dealership_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Dealership",

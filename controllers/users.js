@@ -22,13 +22,12 @@ exports.createUser = asyncHandler(async (req, res, next) => {
   const validationError = validateBody(body);
   if (validationError) return next(validationError);
 
-  // validate password
-  if (requiredString(req.body.password))
-    return next(new ErrorResponse("Password not provided.", 400));
-
-  // encrypt password using bcrypt
-  const salt = await bcrypt.genSalt(10);
-  const encryptedPassword = await bcrypt.hash(req.body.password, salt);
+  // validate the account ID
+  if (invalidObjectId(req.params.accountId))
+    return new ErrorResponse(
+      `Account ID ${req.params.accountId} is not a valid ObjectId.`,
+      400
+    );
 
   // validate email doesn't exist already
   if (await isEmailExists(body.email))
@@ -42,9 +41,20 @@ exports.createUser = asyncHandler(async (req, res, next) => {
     theme: "light",
   };
 
+  // generate all allowed dealership ids if user is account admin
+  if (body.isAccountAdmin) {
+    let allowedDealershipIds = await Dealership.find({
+      account_id: req.params.accountId,
+      deletion_time: null,
+    });
+    body.allowedDealershipIds = allowedDealershipIds.map((item) =>
+      item._id.toString()
+    );
+  }
+
   // create the user object
   const userCreation = {
-    account_id: body.accountId,
+    account_id: req.params.accountId,
     active_dealership_id: body.activeDealershipId,
     allowed_dealership_ids: body.allowedDealershipIds,
     display_name: body.displayName,
@@ -52,7 +62,6 @@ exports.createUser = asyncHandler(async (req, res, next) => {
     is_account_admin: body.isAccountAdmin,
     role_id: body.roleId,
     preferences,
-    password: encryptedPassword,
   };
 
   // create the user
@@ -66,18 +75,8 @@ exports.createUser = asyncHandler(async (req, res, next) => {
       )
     );
 
-  // generate all allowed dealership ids if user is account admin
-  if (body.isAccountAdmin) {
-    let allowedDealershipIds = await Dealership.find({
-      account_id: body.accountId,
-    });
-    body.allowedDealershipIds = allowedDealershipIds.map((item) =>
-      item._id.toString()
-    );
-  }
-
-  // generate default preferences for allowed dealership ids
-  let preferencesList = [];
+  // generate default configs for allowed dealership ids
+  let configsList = [];
   for (let i = 0; i < body.allowedDealershipIds.length; i++) {
     const dealershipProperties = await Property.find({
       dealership_id: body.allowedDealershipIds[i],
@@ -91,8 +90,8 @@ exports.createUser = asyncHandler(async (req, res, next) => {
         };
       });
     }
-    preferencesList.push({
-      account_id: body.accountId,
+    configsList.push({
+      account_id: req.params.accountId,
       dealership_id: body.allowedDealershipIds[i],
       user_id: user._id,
       property_order: propertyOrder,
@@ -101,7 +100,7 @@ exports.createUser = asyncHandler(async (req, res, next) => {
   }
 
   // create document batch
-  const propertyConfigs = await PropertyConfig.insertMany(preferencesList);
+  const propertyConfigs = await PropertyConfig.insertMany(configsList);
 
   if (!propertyConfigs) {
     // delete the new user
@@ -147,7 +146,6 @@ exports.getUser = asyncHandler(async (req, res, next) => {
 
 function convertBody(req) {
   return {
-    accountId: req.body.account_id,
     activeDealershipId: req.body.active_dealership_id,
     allowedDealershipIds: req.body.allowed_dealership_ids
       ? req.body.allowed_dealership_ids
@@ -167,7 +165,6 @@ async function isEmailExists(email) {
 
 function validateBody(body) {
   const {
-    accountId,
     activeDealershipId,
     allowedDealershipIds,
     displayName,
@@ -175,15 +172,6 @@ function validateBody(body) {
     isAccountAdmin,
     roleId,
   } = body;
-
-  // validate accountId
-  if (requiredString(accountId))
-    return new ErrorResponse("Account ID not provided.", 400);
-  if (invalidObjectId(accountId))
-    return new ErrorResponse(
-      `Account ID ${accountId} is not a valid ObjectId.`,
-      400
-    );
 
   // validate activeDealershipId
   if (activeDealershipId && invalidObjectId(activeDealershipId))
@@ -230,10 +218,7 @@ function validateBody(body) {
 
   // validate role
   if (roleId && invalidObjectId(roleId))
-    return new ErrorResponse(
-      `Role ID ${accountId} is not a valid ObjectId.`,
-      400
-    );
+    return new ErrorResponse(`Role ID ${roleId} is not a valid ObjectId.`, 400);
   if (!isAccountAdmin && !roleId)
     return new ErrorResponse(`Non admin user must have a role ID.`, 400);
 

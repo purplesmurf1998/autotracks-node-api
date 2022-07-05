@@ -57,7 +57,7 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, "Password not provided."],
+    default: null,
     select: false,
   },
   creation_time: {
