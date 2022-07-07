@@ -1,12 +1,7 @@
 const mongoose = require("mongoose");
 
 const PropertySchema = new mongoose.Schema({
-  account_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Account",
-    required: [true, "Account ID not provided."],
-  },
-  dealership: {
+  dealership_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Dealership",
     required: [true, "Dealership ID not provided."],

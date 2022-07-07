@@ -24,3 +24,7 @@ exports.invalidObjectId = (val) => {
 exports.invalidEmail = (val) => {
   return !val.match(/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/);
 };
+
+exports.requiredEnum = (val, ...enums) => {
+  return [...enums].indexOf(val) < 0;
+};

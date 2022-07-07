@@ -222,7 +222,7 @@ exports.activateDealership = asyncHandler(async (req, res, next) => {
   if (invalidObjectId(req.params.dealershipId))
     return next(
       new ErrorResponse(
-        `Account ID ${req.params.accountId} is not a valid ObjectId.`,
+        `Dealership ID ${req.params.dealershipId} is not a valid ObjectId.`,
         400
       )
     );
