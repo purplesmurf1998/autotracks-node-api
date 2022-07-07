@@ -143,6 +143,15 @@ exports.createDealership = asyncHandler(async (req, res, next) => {
 // @route   GET /accounts/{accountId}/dealerships
 // @access  Authenticated
 exports.getDealerships = asyncHandler(async (req, res, next) => {
+  // validate the account ID
+  if (invalidObjectId(req.params.accountId))
+    return next(
+      new ErrorResponse(
+        `Account ID ${req.params.accountId} is not a valid ObjectId.`,
+        400
+      )
+    );
+
   // run query in mongoose
   const dealerships = await Dealership.find({
     account_id: req.params.accountId,
@@ -193,6 +202,78 @@ exports.geocodeAddress = asyncHandler(async (req, res, next) => {
   const geocodedAddress = await geocoder.geocode(address);
 
   res.status(201).json(geocodedAddress[0]);
+});
+
+// @desc    Activate a dealership
+// @route   GET accounts/{accountId}/dealerships/{dealershipId}/activate
+// @access  Private
+exports.activateDealership = asyncHandler(async (req, res, next) => {
+  console.log(req);
+  // validate the account ID
+  if (invalidObjectId(req.params.accountId))
+    return next(
+      new ErrorResponse(
+        `Account ID ${req.params.accountId} is not a valid ObjectId.`,
+        400
+      )
+    );
+
+  // validate the dealership ID
+  if (invalidObjectId(req.params.dealershipId))
+    return next(
+      new ErrorResponse(
+        `Account ID ${req.params.accountId} is not a valid ObjectId.`,
+        400
+      )
+    );
+
+  // make sure the dealership exists
+  const dealership = await Dealership.findOne({
+    account_id: req.params.accountId,
+    _id: req.params.dealershipId,
+    deletion_time: null,
+  });
+
+  if (!dealership)
+    return next(
+      new ErrorResponse(
+        `Dealership '${req.params.dealershipId}' not found.`,
+        404
+      )
+    );
+
+  // make sure the user has access to the dealership
+  const allowedDealershipIds = req.token.allowedDealershipIds;
+  if (
+    !allowedDealershipIds ||
+    !allowedDealershipIds.includes(req.params.dealershipId)
+  )
+    return next(
+      new ErrorResponse(
+        `Unauthorized to activate the dealership '${dealership.name}'.`
+      ),
+      401
+    );
+
+  // activate the dealership
+  const user = await User.findByIdAndUpdate(
+    req.token.userId,
+    {
+      active_dealership_id: dealership._id.toString(),
+    },
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
+
+  console.log(user);
+  if (!user)
+    return next(
+      new ErrorResponse("An error occured when updating the user model.", 500)
+    );
+
+  res.status(201).json(user);
 });
 
 async function isNameExists(accountId, name) {

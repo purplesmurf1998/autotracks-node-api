@@ -11,11 +11,12 @@ exports.protect = asyncHandler(async (req, res, next) => {
   )
     token = req.headers.authorization.split(" ")[1];
 
-  if (!token)
+  if (!token) {
+    console.log(req);
     return next(
       new ErrorResponse("Not authorized to access this endpoint.", 401)
     );
-
+  }
   try {
     // validate the token
     const decodedToken = jwt.verify(token, process.env.JWT_SECRET);

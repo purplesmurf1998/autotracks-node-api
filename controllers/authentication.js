@@ -106,7 +106,9 @@ exports.signIn = asyncHandler(async (req, res, next) => {
 
   // check for user
   // use select to return the password in the user object
-  const user = await User.findOne({ email }).select("+password");
+  const user = await User.findOne({ email })
+    .select("+password")
+    .populate("active_dealership_id");
 
   // validate that the user exists
   if (!user) {
@@ -138,9 +140,20 @@ exports.signOut = (req, res, next) => {
 // @desc    Verify if the user is logged in
 // @route   GET /auth/verify
 // @access  Authenticated
-exports.verify = (req, res, next) => {
-  res.status(200).json(req.token);
-};
+exports.verify = asyncHandler(async (req, res, next) => {
+  // grab the user
+  const user = await User.findOne({
+    _id: req.token.userId,
+    deletion_time: null,
+  }).populate("active_dealership_id");
+
+  if (!user)
+    return next(
+      new ErrorResponse("Not authorized to access this endpoint.", 401)
+    );
+
+  sendTokenResponse(user, 200, res);
+});
 
 function sendTokenResponse(user, statusCode, res) {
   // create token for this user
@@ -159,6 +172,9 @@ function sendTokenResponse(user, statusCode, res) {
     options.secure = true;
   }
 
+  // remove password
+  delete user.password;
+
   // send response with cookie and token
   res.status(statusCode).cookie("autotracksAuthToken", token, options).json({
     user,
@@ -173,10 +189,15 @@ function signJWT(user) {
       accountId: user.account_id,
       displayName: user.display_name,
       email: user.email,
-      activeDealershipId: user.active_dealership_id,
-      allowedDealershipIds: user.allowedDealershipIds,
+      activeDealershipId: user.active_dealership_id
+        ? user.active_dealership_id._id
+        : null,
+      activeDealershipName: user.active_dealership_id
+        ? user.active_dealership_id._name
+        : null,
+      allowedDealershipIds: user.allowed_dealership_ids,
       isAccountAdmin: user.is_account_admin,
-      role_id: user.role_id,
+      roleId: user.role_id,
       preferences: user.preferences,
     },
     process.env.JWT_SECRET,

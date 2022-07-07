@@ -122,6 +122,34 @@ exports.createRole = asyncHandler(async (req, res, next) => {
   res.status(201).json(role);
 });
 
+// @desc    Get roles for a specific dealership
+// @route   GET /accounts/{accountId}/dealerships/{dealershipId}/roles
+// @access  Protected
+exports.getRoles = asyncHandler(async (req, res, next) => {
+  // validate dealership ID
+  if (invalidObjectId(req.params.dealershipId))
+    return new ErrorResponse(
+      `Dealership ID ${req.params.dealershipId} is not a valid ObjectId.`,
+      400
+    );
+
+  // validate account ID
+  if (invalidObjectId(req.params.accountId))
+    return new ErrorResponse(
+      `Account ID ${req.params.accountId} is not a valid ObjectId.`,
+      400
+    );
+
+  const roles = await Role.find({
+    dealership_id: req.params.dealershipId,
+    deletion_time: null,
+    account_id: req.params.accountId,
+  });
+
+  // send response
+  res.status(201).json(roles);
+});
+
 function convertBody(req) {
   return {
     title: req.body.title ? req.body.title.trim() : null,
