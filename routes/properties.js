@@ -5,10 +5,14 @@ const {
   createProperty,
   getProperties,
   updateProperty,
+  deleteProperty,
 } = require("../controllers/properties");
 const { protect } = require("../middleware/authorization");
 
 router.route("/").post(protect, createProperty).get(protect, getProperties);
-router.route("/:propertyId").put(protect, updateProperty);
+router
+  .route("/:propertyId")
+  .put(protect, updateProperty)
+  .delete(protect, deleteProperty);
 
 module.exports = router;

@@ -32,13 +32,13 @@ const PropertyConfigSchema = new mongoose.Schema({
       default: [],
     },
   ],
-  property_group_by_ids: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Property",
-      default: [],
+  property_group_by_ids: {
+    type: {
+      value: String,
+      text: String,
     },
-  ],
+    default: null,
+  },
 });
 
 module.exports = mongoose.model("PropertyConfig", PropertyConfigSchema);

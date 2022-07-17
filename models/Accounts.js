@@ -8,6 +8,7 @@ const AccountSchema = new mongoose.Schema({
     required: [true, "Domain not provided."],
     trim: true,
     unique: true,
+    uppercase: true,
   },
   enabled: {
     type: Boolean,

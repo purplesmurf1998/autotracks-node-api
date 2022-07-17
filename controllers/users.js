@@ -4,24 +4,26 @@ const User = require("../models/Users");
 const Property = require("../models/Properties");
 const Dealership = require("../models/Dealerships");
 const bcrypt = require("bcrypt");
-const {
-  invalidObjectId,
-  requiredString,
-  maxStringLength,
-  invalidEmail,
-  requiredObject,
-} = require("../validations");
+const { invalidObjectId } = require("../validations");
 const PropertyConfig = require("../models/PropertyConfigs");
-const DISPLAY_NAME_MAX_LENGTH = 100;
 
 // @desc    Create a new user
-// @route   POST /users
+// @route   POST accounts/{accountId}/users
 // @access  Authenticated
 exports.createUser = asyncHandler(async (req, res, next) => {
-  // validate body
-  const body = convertCreationBody(req);
-  const validationError = validateCreationBody(body);
-  if (validationError) return next(validationError);
+  // clean data
+  const activeDealershipId = req.body.active_dealership_id;
+  const allowedDealershipIds = req.body.allowed_dealership_id
+    ? req.body.allowed_dealership_ids
+    : [];
+  const displayName = req.body.display_name
+    ? req.body.display_name.trim()
+    : null;
+  const email = req.body.email ? req.body.email.trim().toLowerCase() : null;
+  const isAccountAdmin = req.body.is_account_admin
+    ? req.body.is_account_admin
+    : false;
+  const roleId = req.body.role_id;
 
   // validate the account ID
   if (invalidObjectId(req.params.accountId))
@@ -31,10 +33,8 @@ exports.createUser = asyncHandler(async (req, res, next) => {
     );
 
   // validate email doesn't exist already
-  if (await isEmailExists(body.email))
-    return next(
-      new ErrorResponse(`Email '${body.email}' already exists.`, 400)
-    );
+  if (await isEmailExists(email))
+    return next(new ErrorResponse(`Email '${email}' already exists.`, 400));
 
   // create preferences object
   const preferences = {
@@ -43,25 +43,23 @@ exports.createUser = asyncHandler(async (req, res, next) => {
   };
 
   // generate all allowed dealership ids if user is account admin
-  if (body.isAccountAdmin) {
-    let allowedDealershipIds = await Dealership.find({
+  if (isAccountAdmin) {
+    let dealerships = await Dealership.find({
       account_id: req.params.accountId,
       deletion_time: null,
     });
-    body.allowedDealershipIds = allowedDealershipIds.map((item) =>
-      item._id.toString()
-    );
+    allowedDealershipIds = dealerships.map((item) => item._id.toString());
   }
 
   // create the user object
   const userCreation = {
     account_id: req.params.accountId,
-    active_dealership_id: body.activeDealershipId,
-    allowed_dealership_ids: body.allowedDealershipIds,
-    display_name: body.displayName,
-    email: body.email,
-    is_account_admin: body.isAccountAdmin,
-    role_id: body.roleId,
+    active_dealership_id: activeDealershipId,
+    allowed_dealership_ids: allowedDealershipIds,
+    display_name: displayName,
+    email,
+    is_account_admin: isAccountAdmin,
+    role_id: roleId,
     preferences,
   };
 
@@ -78,9 +76,10 @@ exports.createUser = asyncHandler(async (req, res, next) => {
 
   // generate default configs for allowed dealership ids
   let configsList = [];
-  for (let i = 0; i < body.allowedDealershipIds.length; i++) {
+  for (let i = 0; i < allowedDealershipIds.length; i++) {
     const dealershipProperties = await Property.find({
       dealership_id: body.allowedDealershipIds[i],
+      deletion_time: null,
     });
     var propertyOrder = [];
     if (dealershipProperties && dealershipProperties.length > 0) {
@@ -96,7 +95,7 @@ exports.createUser = asyncHandler(async (req, res, next) => {
       dealership_id: body.allowedDealershipIds[i],
       user_id: user._id,
       property_order: propertyOrder,
-      property_group_by_ids: [],
+      property_group_by_ids: null,
     });
   }
 
@@ -117,14 +116,23 @@ exports.createUser = asyncHandler(async (req, res, next) => {
   res.status(201).json(user);
 });
 
-// @desc    Create a new user
-// @route   PUT /account/{accountId}/users/{userId}
+// @desc    Update a user
+// @route   PUT /accounts/{accountId}/users/{userId}
 // @access  Authenticated
 exports.updateUser = asyncHandler(async (req, res, next) => {
-  // validate body
-  const body = convertUpdateBody(req);
-  const validationError = validateUpdateBody(body);
-  if (validationError) return next(validationError);
+  // clean data
+  const activeDealershipId = req.body.active_dealership_id;
+  const allowedDealershipIds = req.body.allowed_dealership_id
+    ? req.body.allowed_dealership_ids
+    : [];
+  const displayName = req.body.display_name
+    ? req.body.display_name.trim()
+    : null;
+  const isAccountAdmin = req.body.is_account_admin
+    ? req.body.is_account_admin
+    : false;
+  const roleId = req.body.role_id;
+  const preferences = req.body.preferences;
 
   // validate the account ID
   if (invalidObjectId(req.params.accountId))
@@ -140,35 +148,38 @@ exports.updateUser = asyncHandler(async (req, res, next) => {
       400
     );
 
-  if (body.isAccountAdmin) body.roleId = null;
+  if (isAccountAdmin) roleId = null;
 
   // generate all allowed dealership ids if user is account admin
-  if (body.isAccountAdmin) {
+  if (isAccountAdmin) {
     let allowedDealershipIds = await Dealership.find({
       account_id: req.params.accountId,
       deletion_time: null,
     });
-    body.allowedDealershipIds = allowedDealershipIds.map((item) =>
+    allowedDealershipIds = allowedDealershipIds.map((item) =>
       item._id.toString()
     );
   }
 
   // create the user object
   const userUpdate = {
-    account_id: req.params.accountId,
-    active_dealership_id: body.activeDealershipId,
-    allowed_dealership_ids: body.allowedDealershipIds,
-    display_name: body.displayName,
-    is_account_admin: body.isAccountAdmin,
-    role_id: body.roleId,
-    preferences: body.preferences,
+    active_dealership_id: activeDealershipId,
+    allowed_dealership_ids: allowedDealershipIds,
+    display_name: displayName,
+    is_account_admin: isAccountAdmin,
+    role_id: roleId,
+    preferences,
   };
 
-  // update the user
-  const user = await User.findByIdAndUpdate(req.params.userId, userUpdate, {
-    new: true,
-    runValidators: true,
-  });
+  // find user and update
+  const user = await User.updateOne(
+    { _id: req.params.userId, deletion_time: null },
+    userUpdate,
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
 
   if (!user)
     return next(
@@ -182,14 +193,13 @@ exports.updateUser = asyncHandler(async (req, res, next) => {
     user_id: user._id,
   });
   const configsToCreate = [];
-  for (let i = 0; i < body.allowedDealershipIds.length; i++) {
+  for (let i = 0; i < allowedDealershipIds.length; i++) {
     if (
       !existingConfigs.find(
-        (config) =>
-          config.dealership_id.toString() === body.allowedDealershipIds[i]
+        (config) => config.dealership_id.toString() === allowedDealershipIds[i]
       )
     )
-      configsToCreate.push(body.allowedDealershipIds[i]);
+      configsToCreate.push(allowedDealershipIds[i]);
   }
   for (let i = 0; i < configsToCreate.length; i++) {
     const dealershipProperties = await Property.find({
@@ -209,7 +219,7 @@ exports.updateUser = asyncHandler(async (req, res, next) => {
       dealership_id: configsToCreate[i],
       user_id: user._id,
       property_order: propertyOrder,
-      property_group_by_ids: [],
+      property_group_by_ids: null,
     });
   }
 
@@ -230,38 +240,68 @@ exports.updateUser = asyncHandler(async (req, res, next) => {
   res.status(201).json(user);
 });
 
-// @desc    Get account users
-// @route   POST /accounts/{accountId}/users
+// @desc    Get account users with the possibility to filter for dealership
+// @route   GET /accounts/{accountId}/users
 // @access  Authenticated
 exports.getUsers = asyncHandler(async (req, res, next) => {
-  // get the formatted query based on the advnaced filtering
-  const users = await User.find({
+  // validate the account ID
+  if (invalidObjectId(req.params.accountId))
+    return new ErrorResponse(
+      `Account ID ${req.params.accountId} is not a valid ObjectId.`,
+      400
+    );
+
+  const accountUsers = await User.find({
     account_id: req.params.accountId,
     deletion_time: null,
   }).populate("role_id");
 
-  let dealershipUsers = users;
+  let users = accountUsers;
 
-  if (req.body.dealership_id) {
-    if (invalidObjectId(req.body.dealership_id))
+  console.log(req.query.dealershipId);
+  console.log(users);
+  if (req.query.dealershipId) {
+    if (invalidObjectId(req.query.dealershipId))
       return new ErrorResponse(
-        `Dealership ID ${req.body.dealership_id} is not a valid ObjectId.`,
+        `Dealership ID ${req.query.dealershipId} is not a valid ObjectId.`,
         400
       );
 
-    dealershipUsers = users.filter((user) => {
-      user.allowed_dealership_ids.includes(req.body.dealership_id);
+    users = accountUsers.filter((user) => {
+      return user.allowed_dealership_ids
+        .map((id) => id.toString())
+        .includes(req.query.dealershipId);
     });
   }
 
-  res.status(200).json(dealershipUsers);
+  console.log(users);
+
+  res.status(200).json(users);
 });
 
 // @desc    Get a specific user
-// @route   GET /users/{userId}
+// @route   GET /accounts/{accountId}/users/{userId}
 // @access  Authenticated
 exports.getUser = asyncHandler(async (req, res, next) => {
-  const user = User.findOne({ _id: req.params.userId, deletion_time: null });
+  // validate the account ID
+  if (invalidObjectId(req.params.accountId))
+    return new ErrorResponse(
+      `Account ID ${req.params.accountId} is not a valid ObjectId.`,
+      400
+    );
+
+  // validate the user ID
+  if (invalidObjectId(req.params.userId))
+    return new ErrorResponse(
+      `User ID ${req.params.userId} is not a valid ObjectId.`,
+      400
+    );
+
+  const user = await User.findOne({
+    _id: req.params.userId,
+    account_id: req.params.accountId,
+    deletion_time: null,
+  });
 
   if (!user) {
     return next(
@@ -272,157 +312,6 @@ exports.getUser = asyncHandler(async (req, res, next) => {
   res.status(200).json(user);
 });
 
-function convertCreationBody(req) {
-  return {
-    activeDealershipId: req.body.active_dealership_id,
-    allowedDealershipIds: req.body.allowed_dealership_ids
-      ? req.body.allowed_dealership_ids
-      : [],
-    displayName: req.body.display_name ? req.body.display_name.trim() : null,
-    email: req.body.email ? req.body.email.trim().toLowerCase() : null,
-    isAccountAdmin: req.body.is_account_admin
-      ? req.body.is_account_admin
-      : false,
-    roleId: req.body.role_id,
-  };
-}
-
-function convertUpdateBody(req) {
-  return {
-    activeDealershipId: req.body.active_dealership_id,
-    allowedDealershipIds: req.body.allowed_dealership_ids
-      ? req.body.allowed_dealership_ids
-      : [],
-    displayName: req.body.display_name ? req.body.display_name.trim() : null,
-    isAccountAdmin: req.body.is_account_admin
-      ? req.body.is_account_admin
-      : false,
-    roleId: req.body.role_id,
-    preferences: req.body.preferences,
-  };
-}
-
 async function isEmailExists(email) {
   return await User.exists({ email });
-}
-
-function validateCreationBody(body) {
-  const {
-    activeDealershipId,
-    allowedDealershipIds,
-    displayName,
-    email,
-    isAccountAdmin,
-    roleId,
-  } = body;
-
-  // validate activeDealershipId
-  if (activeDealershipId && invalidObjectId(activeDealershipId))
-    return new ErrorResponse(
-      `Active dealership ID ${accountId} is not a valid ObjectId.`,
-      400
-    );
-
-  // validate allowedDealershipIds
-  if (allowedDealershipIds && allowedDealershipIds.length > 0) {
-    for (let i = 0; i < allowedDealershipIds.length; i++) {
-      if (invalidObjectId(allowedDealershipIds[i]))
-        return new ErrorResponse(
-          `Active dealership ID ${allowedDealershipIds[i]} is not a valid ObjectId.`,
-          400
-        );
-    }
-  }
-
-  // validate displayName
-  if (requiredString(displayName))
-    return new ErrorResponse(`Display name not provided.`, 400);
-  if (maxStringLength(displayName, DISPLAY_NAME_MAX_LENGTH))
-    return new ErrorResponse(
-      `Display name too long. Must be less than or equal to ${DISPLAY_NAME_MAX_LENGTH} characters.`,
-      400
-    );
-
-  // validate email address
-  if (requiredString(email))
-    return new ErrorResponse(`Email address not provided.`, 400);
-  if (invalidEmail(email))
-    return new ErrorResponse(
-      `Email '${email}' is not a valid email address.`,
-      400
-    );
-
-  // validate activeDealershipId with isAccountAdmin
-  if (!isAccountAdmin && !activeDealershipId)
-    return new ErrorResponse(
-      `Non admin user must have an active dealership ID.`,
-      400
-    );
-
-  // validate role
-  if (roleId && invalidObjectId(roleId))
-    return new ErrorResponse(`Role ID ${roleId} is not a valid ObjectId.`, 400);
-  if (!isAccountAdmin && !roleId)
-    return new ErrorResponse(`Non admin user must have a role ID.`, 400);
-
-  // all validations passed
-  return null;
-}
-
-function validateUpdateBody(body) {
-  const {
-    activeDealershipId,
-    allowedDealershipIds,
-    displayName,
-    isAccountAdmin,
-    roleId,
-    preferences,
-  } = body;
-
-  // validate activeDealershipId
-  if (activeDealershipId && invalidObjectId(activeDealershipId))
-    return new ErrorResponse(
-      `Active dealership ID ${accountId} is not a valid ObjectId.`,
-      400
-    );
-
-  // validate allowedDealershipIds
-  if (allowedDealershipIds && allowedDealershipIds.length > 0) {
-    for (let i = 0; i < allowedDealershipIds.length; i++) {
-      if (invalidObjectId(allowedDealershipIds[i]))
-        return new ErrorResponse(
-          `Active dealership ID ${allowedDealershipIds[i]} is not a valid ObjectId.`,
-          400
-        );
-    }
-  }
-
-  // validate displayName
-  if (requiredString(displayName))
-    return new ErrorResponse(`Display name not provided.`, 400);
-  if (maxStringLength(displayName, DISPLAY_NAME_MAX_LENGTH))
-    return new ErrorResponse(
-      `Display name too long. Must be less than or equal to ${DISPLAY_NAME_MAX_LENGTH} characters.`,
-      400
-    );
-
-  // validate activeDealershipId with isAccountAdmin
-  if (!isAccountAdmin && !activeDealershipId)
-    return new ErrorResponse(
-      `Non admin user must have an active dealership ID.`,
-      400
-    );
-
-  // validate role
-  if (roleId && invalidObjectId(roleId))
-    return new ErrorResponse(`Role ID ${roleId} is not a valid ObjectId.`, 400);
-  if (!isAccountAdmin && !roleId)
-    return new ErrorResponse(`Non admin user must have a role ID.`, 400);
-
-  // validate preferences
-  if (requiredObject(preferences))
-    return new ErrorResponse("Preferences not set", 400);
-
-  // all validations passed
-  return null;
 }

@@ -19,6 +19,8 @@ const userRoutes = require("./routes/users");
 const dealershipRoutes = require("./routes/dealerships");
 const rolesRoutes = require("./routes/roles");
 const propertyRoutes = require("./routes/properties");
+const vehicleRoutes = require("./routes/vehicles");
+const propertyConfigRoutes = require("./routes/propertyconfigs");
 
 if (process.env.NODE_ENV === "development") {
   console.log("Running in development mode.");
@@ -53,6 +55,8 @@ app.use("/accounts/:accountId/users", userRoutes);
 app.use("/accounts/:accountId/dealerships", dealershipRoutes);
 app.use("/accounts/:accountId/dealerships/:dealershipId/roles", rolesRoutes);
 app.use("/dealerships/:dealershipId/properties", propertyRoutes);
+app.use("/dealerships/:dealershipId/vehicles", vehicleRoutes);
+app.use("/dealerships/:dealershipId/property-configs", propertyConfigRoutes);
 
 // mount error handler function
 app.use((err, req, res, next) => {

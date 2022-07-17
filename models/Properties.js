@@ -37,10 +37,6 @@ const PropertySchema = new mongoose.Schema({
     type: Number,
     default: Date.now,
   },
-  deletion_time: {
-    type: Number,
-    default: null,
-  },
 });
 
 // // Create the key from the label

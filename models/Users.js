@@ -31,7 +31,7 @@ const UserSchema = new mongoose.Schema({
     required: "Email address not provided.",
     match: [
       /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-      "Email address not valid.",
+      "'{VALUE}' is not a valid email address.",
     ],
   },
   is_account_admin: {

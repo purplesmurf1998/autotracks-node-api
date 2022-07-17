@@ -1,18 +1,10 @@
 const ErrorResponse = require("../error-response");
 const asyncHandler = require("../async-handler");
 const User = require("../models/Users");
-const Property = require("../models/Properties");
-const Dealership = require("../models/Dealerships");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const {
-  requiredString,
-  maxStringLength,
-  invalidEmail,
-} = require("../validations");
-const PropertyConfig = require("../models/PropertyConfigs");
+const { requiredString } = require("../validations");
 const Account = require("../models/Accounts");
-const DISPLAY_NAME_MAX_LENGTH = 100;
 
 // @desc    Create a new admin user
 // @route   POST /register
@@ -28,13 +20,18 @@ exports.createAdmin = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // validate the body
-  const body = convertBody(req);
-  const validationError = validateBody(body);
-  if (validationError) return next(await handleError(validationError), req);
+  // clean data
+  const displayName = req.body.display_name
+    ? req.body.display_name.trim()
+    : null;
+  const email = req.body.email ? req.body.email.trim().toLowerCase() : null;
+  const isAccountAdmin = req.body.is_account_admin
+    ? req.body.is_account_admin
+    : false;
+  const password = req.body.password;
 
   // validate password
-  if (requiredString(req.body.password))
+  if (requiredString(password))
     return next(
       await handleError(new ErrorResponse("Password not provided.", 400)),
       req
@@ -42,13 +39,13 @@ exports.createAdmin = asyncHandler(async (req, res, next) => {
 
   // encrypt password using bcrypt
   const salt = await bcrypt.genSalt(10);
-  const encryptedPassword = await bcrypt.hash(req.body.password, salt);
+  const encryptedPassword = await bcrypt.hash(password, salt);
 
   // validate email doesn't exist already
-  if (await isEmailExists(body.email))
+  if (await isEmailExists(email))
     return next(
       await handleError(
-        new ErrorResponse(`Email '${body.email}' already exists.`, 400)
+        new ErrorResponse(`Email '${email}' already exists.`, 400)
       ),
       req
     );
@@ -64,9 +61,9 @@ exports.createAdmin = asyncHandler(async (req, res, next) => {
     account_id: req.account._id,
     active_dealership_id: null,
     allowed_dealership_id: [],
-    display_name: body.displayName,
-    email: body.email,
-    is_account_admin: body.isAccountAdmin,
+    display_name: displayName,
+    email: email,
+    is_account_admin: isAccountAdmin,
     role_id: null,
     preferences,
     password: encryptedPassword,
@@ -101,12 +98,12 @@ exports.signIn = asyncHandler(async (req, res, next) => {
 
   // validate that email and password exist
   if (!email || !password) {
-    return next(new ErrorResponse("Email and/or password not provided.", 400));
+    return next(new ErrorResponse("Invalid credentials.", 401));
   }
 
   // check for user
   // use select to return the password in the user object
-  const user = await User.findOne({ email })
+  const user = await User.findOne({ email, deletion_time: null })
     .select("+password")
     .populate("active_dealership_id");
 
@@ -114,7 +111,7 @@ exports.signIn = asyncHandler(async (req, res, next) => {
   if (!user) {
     return next(new ErrorResponse("Invalid credentials.", 401));
   }
-
+  // if no password is returned, it is because user has not clicked on the activation link
   if (!user.password) {
     return next(new ErrorResponse("Invalid credentials.", 401));
   }
@@ -219,47 +216,5 @@ async function handleError(err, req) {
 }
 
 async function isEmailExists(email) {
-  return await User.exists({ email });
-}
-
-function convertBody(req) {
-  return {
-    displayName: req.body.display_name ? req.body.display_name.trim() : null,
-    email: req.body.email ? req.body.email.trim().toLowerCase() : null,
-    isAccountAdmin: req.body.is_account_admin
-      ? req.body.is_account_admin
-      : false,
-  };
-}
-
-function validateBody(body) {
-  const { displayName, email, isAccountAdmin } = body;
-
-  // validate displayName
-  if (requiredString(displayName))
-    return new ErrorResponse(`Display name not provided.`, 400);
-  if (maxStringLength(displayName, DISPLAY_NAME_MAX_LENGTH))
-    return new ErrorResponse(
-      `Display name too long. Must be less than or equal to ${DISPLAY_NAME_MAX_LENGTH} characters.`,
-      400
-    );
-
-  // validate email address
-  if (requiredString(email))
-    return new ErrorResponse(`Email address not provided.`, 400);
-  if (invalidEmail(email))
-    return new ErrorResponse(
-      `Email '${email}' is not a valid email address.`,
-      400
-    );
-
-  // validate activeDealershipId with isAccountAdmin
-  if (!isAccountAdmin)
-    return new ErrorResponse(
-      `Registration of a new user must be an admin.`,
-      400
-    );
-
-  // all validations passed
-  return null;
+  return await User.exists({ email, deletion_time: null });
 }

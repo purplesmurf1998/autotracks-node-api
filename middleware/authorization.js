@@ -1,7 +1,6 @@
 const ErrorResponse = require("../error-response");
 const asyncHandler = require("../async-handler");
 const jwt = require("jsonwebtoken");
-const User = require("../models/Users");
 
 exports.protect = asyncHandler(async (req, res, next) => {
   let token;
@@ -12,7 +11,6 @@ exports.protect = asyncHandler(async (req, res, next) => {
     token = req.headers.authorization.split(" ")[1];
 
   if (!token) {
-    console.log(req);
     return next(
       new ErrorResponse("Not authorized to access this endpoint.", 401)
     );
@@ -28,4 +26,22 @@ exports.protect = asyncHandler(async (req, res, next) => {
       new ErrorResponse("Not authorized to access this endpoint.", 401)
     );
   }
+});
+
+exports.isAdmin = asyncHandler(async (req, res, next) => {
+  const token = req.token;
+
+  if (!token) {
+    return next(
+      new ErrorResponse("Not authorized to access this endpoint.", 401)
+    );
+  }
+
+  if (!token.isAccountAdmin) {
+    return next(
+      new ErrorResponse("Not authorized to access this endpoint.", 401)
+    );
+  }
+
+  next();
 });

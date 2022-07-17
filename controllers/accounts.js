@@ -1,38 +1,11 @@
 const ErrorResponse = require("../error-response");
 const asyncHandler = require("../async-handler");
 const Account = require("../models/Accounts");
-const {
-  requiredString,
-  maxStringLength,
-  minStringLength,
-} = require("../validations");
-const DOMAIN_MAX_LENGTH = 50;
-const DOMAIN_MIN_LENGTH = 5;
 
 exports.createAccount = asyncHandler(async (req, res, next) => {
   // clean data
-  const domain = req.body.domain ? req.body.domain.trim() : null;
+  const domain = req.body.domain ? req.body.domain.trim().toUpperCase() : null;
   const enabled = req.body.enabled ? req.body.enabled : true;
-
-  // validate request body
-  if (requiredString(domain))
-    return next(new ErrorResponse("Account domain not provided.", 400));
-
-  if (maxStringLength(domain, DOMAIN_MAX_LENGTH))
-    return next(
-      new ErrorResponse(
-        `Account domain too long. Must be less than or equal to ${DOMAIN_MAX_LENGTH} characters.`,
-        400
-      )
-    );
-
-  if (minStringLength(domain, DOMAIN_MIN_LENGTH))
-    return next(
-      new ErrorResponse(
-        `Account domain too short. Must be greater than or equal to ${DOMAIN_MIN_LENGTH} characters.`,
-        400
-      )
-    );
 
   // verify if account name already exists or not
   if (await isAccountDomainExists(domain))
